@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Animación de Billar — Guía Frame a Frame</title>
+  <title>Animación de Billar — Play y Stop</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -132,8 +132,8 @@
 </head>
 <body>
   <main class="card">
-    <h1>Dispersión de Bolas de Billar (24 fps)</h1>
-    <p class="subtitle">Guía interactiva frame a frame para animar el saque en Adobe Animate.</p>
+    <h1>Animación de Billar (24 fps)</h1>
+    <p class="subtitle">Golpe del taco a la bola blanca y dispersión completa con controles de Play, Pause y Stop.</p>
 
     <div class="toolbar">
       <div class="btn-group">
@@ -144,10 +144,6 @@
       </div>
 
       <div class="toggles">
-        <label class="check">
-          <input id="chkTrails" type="checkbox" checked />
-          <span>Trayectorias (Guía)</span>
-        </label>
         <label class="check">
           <input id="chkOnion" type="checkbox" />
           <span>Papel cebolla</span>
@@ -162,8 +158,8 @@
     <div class="timeline">
       <button id="btnPrev" title="Fotograma anterior">&lt;</button>
       <button id="btnNext" title="Siguiente fotograma">&gt;</button>
-      <input id="frameSlider" type="range" min="0" max="130" value="0" />
-      <span id="frameLabel">Frame 0 / 130</span>
+      <input id="frameSlider" type="range" min="0" max="145" value="0" />
+      <span id="frameLabel">Frame 0 / 145</span>
     </div>
   </main>
 
@@ -180,6 +176,10 @@
     const BOTTOM = H - RAIL;
     const R = 11.5;
     const POCKET_R = 19;
+
+    const CUE_BALL_START_X = 270;
+    const CUE_BALL_START_Y = H / 2 + 1.2;
+    const CUE_HIT_FRAME = 10; // Frame exacto donde el palo golpea la blanca
 
     const pockets = [
       { x: LEFT + 2, y: TOP + 2 },
@@ -221,10 +221,10 @@
       const balls = [];
       balls.push({
         id: 0,
-        x: 340,
-        y: H / 2 + 1.2,
-        vx: 24.5,
-        vy: -0.45,
+        x: CUE_BALL_START_X,
+        y: CUE_BALL_START_Y,
+        vx: 0,
+        vy: 0,
         pocketed: false
       });
 
@@ -259,7 +259,7 @@
       return balls;
     }
 
-    const TOTAL_FRAMES = 130;
+    const TOTAL_FRAMES = 145;
     const SUBSTEPS = 12;
     const FRICTION = 0.989;
     const RESTITUTION_BALL = 0.96;
@@ -273,6 +273,15 @@
 
       for (let f = 0; f <= TOTAL_FRAMES; f++) {
         frames.push(state.map(b => ({ ...b })));
+
+        // En el frame exacto del impacto del palo, la bola blanca recibe el impulso
+        if (f === CUE_HIT_FRAME) {
+          state[0].vx = 25.2;
+          state[0].vy = -0.45;
+        }
+
+        // Mientras no haya golpeado el palo, no simulamos movimiento
+        if (f < CUE_HIT_FRAME) continue;
 
         for (let s = 0; s < SUBSTEPS; s++) {
           const dt = 1 / SUBSTEPS;
@@ -364,7 +373,6 @@
     let currentFrame = 0;
     let isPlaying = true;
     let slowMo = false;
-    let showTrails = true;
     let showOnion = false;
     let lastTime = 0;
     let accum = 0;
@@ -375,7 +383,6 @@
     const btnSlow = document.getElementById('btnSlow');
     const btnPrev = document.getElementById('btnPrev');
     const btnNext = document.getElementById('btnNext');
-    const chkTrails = document.getElementById('chkTrails');
     const chkOnion = document.getElementById('chkOnion');
     const frameSlider = document.getElementById('frameSlider');
     const frameLabel = document.getElementById('frameLabel');
@@ -422,6 +429,89 @@
         ctx.fillStyle = '#09090b';
         ctx.fill();
       }
+    }
+
+    function getCueTipX(frame) {
+      const impactX = CUE_BALL_START_X - R;
+      if (frame <= 5) {
+        // Toma impulso hacia atrás
+        const t = frame / 5;
+        const ease = 1 - Math.pow(1 - t, 2);
+        return (impactX - 18) - ease * 38;
+      }
+      if (frame <= CUE_HIT_FRAME) {
+        // Golpe rápido hacia la bola blanca
+        const t = (frame - 5) / (CUE_HIT_FRAME - 5);
+        const ease = t * t;
+        return (impactX - 56) + ease * 56;
+      }
+      if (frame <= CUE_HIT_FRAME + 6) {
+        // Ligero retroceso tras el impacto
+        const t = (frame - CUE_HIT_FRAME) / 6;
+        return impactX - t * 14;
+      }
+      return impactX - 14;
+    }
+
+    function drawCueStick(frame) {
+      // Desaparece suavemente después de alejarse un poco tras el golpe
+      let alpha = 1;
+      if (frame > CUE_HIT_FRAME + 14) {
+        alpha = Math.max(0, 1 - (frame - (CUE_HIT_FRAME + 14)) / 10);
+      }
+      if (alpha <= 0) return;
+
+      const tipX = getCueTipX(frame);
+      const y = CUE_BALL_START_Y;
+      const cueLen = 250;
+      const buttX = tipX - cueLen;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      // Sombra del palo sobre el paño
+      ctx.beginPath();
+      ctx.moveTo(buttX, y + 4);
+      ctx.lineTo(tipX, y + 4);
+      ctx.strokeStyle = 'rgba(0,0,0,0.28)';
+      ctx.lineWidth = 6.5;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // Cuerpo cónico de madera
+      const woodGrad = ctx.createLinearGradient(0, y - 4, 0, y + 4);
+      woodGrad.addColorStop(0, '#e3a869');
+      woodGrad.addColorStop(0.45, '#b97736');
+      woodGrad.addColorStop(1, '#6f3e15');
+
+      ctx.beginPath();
+      ctx.moveTo(buttX, y - 4.4);
+      ctx.lineTo(tipX - 9, y - 2.6);
+      ctx.lineTo(tipX - 9, y + 2.6);
+      ctx.lineTo(buttX, y + 4.4);
+      ctx.closePath();
+      ctx.fillStyle = woodGrad;
+      ctx.fill();
+
+      // Empuñadura oscura en la parte trasera
+      ctx.beginPath();
+      ctx.moveTo(buttX, y - 4.4);
+      ctx.lineTo(buttX + 72, y - 3.9);
+      ctx.lineTo(buttX + 72, y + 3.9);
+      ctx.lineTo(buttX, y + 4.4);
+      ctx.closePath();
+      ctx.fillStyle = '#3b1d0e';
+      ctx.fill();
+
+      // Casquillo blanco (ferrule)
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(tipX - 9, y - 2.6, 6.5, 5.2);
+
+      // Suela azul de tiza en la punta
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(tipX - 2.5, y - 2.5, 2.5, 5);
+
+      ctx.restore();
     }
 
     function drawBall(b, alpha = 1) {
@@ -481,33 +571,6 @@
       ctx.restore();
     }
 
-    function drawTrails(upToFrame) {
-      if (!showTrails || upToFrame === 0) return;
-
-      for (let i = 0; i < frames[0].length; i++) {
-        const style = BALL_STYLES[frames[0][i].id];
-        ctx.beginPath();
-        let started = false;
-        for (let f = 0; f <= upToFrame; f++) {
-          const b = frames[f][i];
-          if (b.pocketed) break;
-          if (!started) {
-            ctx.moveTo(b.x, b.y);
-            started = true;
-          } else {
-            ctx.lineTo(b.x, b.y);
-          }
-        }
-        ctx.strokeStyle = frames[0][i].id === 0 ? 'rgba(255,255,255,0.55)' : style.color;
-        ctx.globalAlpha = 0.45;
-        ctx.lineWidth = 1.6;
-        ctx.setLineDash([3, 3]);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.globalAlpha = 1;
-      }
-    }
-
     function drawOnionSkin(frameIdx) {
       if (!showOnion) return;
       const ghosts = [frameIdx - 6, frameIdx - 3];
@@ -523,21 +586,11 @@
 
     function render() {
       drawTable();
-      drawTrails(currentFrame);
       drawOnionSkin(currentFrame);
       for (const b of frames[currentFrame]) {
         drawBall(b, 1);
       }
-
-      if (currentFrame >= 4 && currentFrame <= 7) {
-        ctx.save();
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(468 - R, H / 2, R + 6 + (currentFrame - 4) * 3, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.restore();
-      }
+      drawCueStick(currentFrame);
     }
 
     function loop(ts) {
@@ -601,10 +654,6 @@
       isPlaying = false;
       currentFrame = parseInt(e.target.value, 10);
       updateUI();
-    });
-
-    chkTrails.addEventListener('change', (e) => {
-      showTrails = e.target.checked;
     });
 
     chkOnion.addEventListener('change', (e) => {
